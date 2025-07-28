@@ -1,0 +1,17 @@
+name: "toolchain/jdk/jdk25"
+description:
+    "Source for OpenJDK25"
+
+third_party {
+  url {
+    type: HOMEPAGE
+    value: "https://github.com/openjdk/jdk25u"
+  }
+  url {
+    type: GIT
+    value: "https://github.com/openjdk/jdk25u.git"
+  }
+  version: "jdk-25+33"
+  last_upgrade_date { year: 2025 month: 7 day: 28 }
+  license_type: RESTRICTED
+}
