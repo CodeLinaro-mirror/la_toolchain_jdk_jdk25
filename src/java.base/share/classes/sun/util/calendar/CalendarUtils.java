@@ -30,7 +30,8 @@ package sun.util.calendar;
 public class CalendarUtils {
 
     // Utility class should not be instantiated
-    private CalendarUtils() {}
+    // Android-changed: Allow inheritance of this utility class.
+    // private CalendarUtils() {}
 
     /**
      * Returns whether the specified year is a leap year in the Gregorian
