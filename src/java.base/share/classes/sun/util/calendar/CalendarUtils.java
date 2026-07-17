@@ -25,9 +25,7 @@
 
 package sun.util.calendar;
 
-// Android-changed: Allow inheritance of this utility class.
-// public final class CalendarUtils {
-public class CalendarUtils {
+public final class CalendarUtils {
 
     // Utility class should not be instantiated
     // Android-changed: Allow inheritance of this utility class.
