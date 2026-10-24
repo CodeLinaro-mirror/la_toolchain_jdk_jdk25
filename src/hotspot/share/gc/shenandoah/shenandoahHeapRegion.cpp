@@ -75,6 +75,7 @@ ShenandoahHeapRegion::ShenandoahHeapRegion(HeapWord* start, size_t index, bool c
   _plab_allocs(0),
   _live_data(0),
   _critical_pins(0),
+  _mixed_candidate_garbage_words(0),
   _update_watermark(start),
   _age(0),
 #ifdef SHENANDOAH_CENSUS_NOISE
@@ -142,27 +143,17 @@ void ShenandoahHeapRegion::make_affiliated_maybe() {
 
 void ShenandoahHeapRegion::make_regular_bypass() {
   shenandoah_assert_heaplocked();
-  assert (!Universe::is_fully_initialized() ||
-          ShenandoahHeap::heap()->is_full_gc_in_progress() ||
+  assert (ShenandoahHeap::heap()->is_full_gc_in_progress() ||
           ShenandoahHeap::heap()->is_degenerated_gc_in_progress(),
-          "Only for STW GC or when Universe is initializing (CDS)");
+          "Only for STW GC");
   reset_age();
-  auto cur_state = state();
-  switch (cur_state) {
+  switch (state()) {
     case _empty_uncommitted:
       do_commit();
     case _empty_committed:
     case _cset:
     case _humongous_start:
     case _humongous_cont:
-      if (cur_state == _humongous_start || cur_state == _humongous_cont) {
-        // CDS allocates chunks of the heap to fill with regular objects. The allocator
-        // will dutifully track any waste in the unused portion of the last region. Once
-        // CDS has finished initializing the objects, it will convert these regions to
-        // regular regions. The 'waste' in the last region is no longer wasted at this point,
-        // so we must stop treating it as such.
-        decrement_humongous_waste();
-      }
       set_state(_regular);
       return;
     case _pinned_cset:
@@ -575,22 +566,27 @@ void ShenandoahHeapRegion::recycle_internal() {
   assert(_recycling.is_set() && is_trash(), "Wrong state");
   ShenandoahHeap* heap = ShenandoahHeap::heap();
 
-  set_top(bottom());
+  _mixed_candidate_garbage_words = 0;
   clear_live_data();
   reset_alloc_metadata();
   heap->marking_context()->reset_top_at_mark_start(this);
   set_update_watermark(bottom());
   if (ZapUnusedHeapArea) {
-    SpaceMangler::mangle_region(MemRegion(bottom(), end()));
+    SpaceMangler::mangle_region(MemRegion(bottom(), top()));
   }
-
-  make_empty();
+  set_top(bottom());
   set_affiliation(FREE);
+
+  // Lastly, set region state to empty
+  make_empty();
 }
 
 void ShenandoahHeapRegion::try_recycle_under_lock() {
   shenandoah_assert_heaplocked();
-  if (is_trash() && _recycling.try_set()) {
+  if (!is_trash()) {
+    return;
+  }
+  if (_recycling.try_set()) {
     if (is_trash()) {
       ShenandoahHeap* heap = ShenandoahHeap::heap();
       ShenandoahGeneration* generation = heap->generation_for(affiliation());
@@ -610,12 +606,16 @@ void ShenandoahHeapRegion::try_recycle_under_lock() {
         os::naked_yield();
       }
     }
+    assert(!is_trash(), "Must not");
   }
 }
 
 void ShenandoahHeapRegion::try_recycle() {
   shenandoah_assert_not_heaplocked();
-  if (is_trash() && _recycling.try_set()) {
+  if (!is_trash()) {
+    return;
+  }
+  if (_recycling.try_set()) {
     // Double check region state after win the race to set recycling flag
     if (is_trash()) {
       ShenandoahHeap* heap = ShenandoahHeap::heap();
@@ -835,7 +835,7 @@ void ShenandoahHeapRegion::set_state(RegionState to) {
     evt.set_to(to);
     evt.commit();
   }
-  Atomic::store(&_state, to);
+  Atomic::release_store(&_state, to);
 }
 
 void ShenandoahHeapRegion::record_pin() {

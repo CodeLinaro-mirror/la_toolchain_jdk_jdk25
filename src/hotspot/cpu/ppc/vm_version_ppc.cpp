@@ -25,6 +25,7 @@
 
 #include "asm/assembler.inline.hpp"
 #include "asm/macroAssembler.inline.hpp"
+#include "compiler/compilerDefinitions.inline.hpp"
 #include "compiler/disassembler.hpp"
 #include "jvm.h"
 #include "memory/resourceArea.hpp"
@@ -97,14 +98,22 @@ void VM_Version::initialize() {
     FLAG_SET_ERGO(TrapBasedRangeChecks, false);
   }
 
+  if (FLAG_IS_DEFAULT(UsePopCountInstruction)) {
+    FLAG_SET_ERGO(UsePopCountInstruction, true);
+  }
+
   if (PowerArchitecturePPC64 >= 9) {
     // Performance is good since Power9.
-    if (FLAG_IS_DEFAULT(SuperwordUseVSX)) {
+    if (FLAG_IS_DEFAULT(SuperwordUseVSX) && CompilerConfig::is_c2_enabled()) {
       FLAG_SET_ERGO(SuperwordUseVSX, true);
     }
   }
 
   MaxVectorSize = SuperwordUseVSX ? 16 : 8;
+  if (!SuperwordUseVSX && FLAG_IS_DEFAULT(EnableVectorSupport)) {
+    // VectorSupport intrinsics currently have issues with MaxVectorSize < 16 (JDK-8370803).
+    FLAG_SET_ERGO(EnableVectorSupport, false);
+  }
   if (FLAG_IS_DEFAULT(AlignVector)) {
     FLAG_SET_ERGO(AlignVector, false);
   }

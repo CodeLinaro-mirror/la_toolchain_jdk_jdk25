@@ -687,7 +687,7 @@ Compile::Compile(ciEnv* ci_env, ciMethod* target, int osr_bci,
       _boxing_late_inlines(comp_arena(), 2, 0, nullptr),
       _vector_reboxing_late_inlines(comp_arena(), 2, 0, nullptr),
       _late_inlines_pos(0),
-      _number_of_mh_late_inlines(0),
+      _has_mh_late_inlines(false),
       _oom(false),
       _replay_inline_data(nullptr),
       _inline_printer(this),
@@ -957,7 +957,7 @@ Compile::Compile(ciEnv* ci_env,
       _igvn_worklist(nullptr),
       _types(nullptr),
       _node_hash(nullptr),
-      _number_of_mh_late_inlines(0),
+      _has_mh_late_inlines(false),
       _oom(false),
       _replay_inline_data(nullptr),
       _inline_printer(this),
@@ -3596,7 +3596,10 @@ void Compile::final_graph_reshaping_main_switch(Node* n, Final_Reshape_Counts& f
         } else if (t->isa_oopptr()) {
           new_in2 = ConNode::make(t->make_narrowoop());
         } else if (t->isa_klassptr()) {
-          new_in2 = ConNode::make(t->make_narrowklass());
+          ciKlass* klass = t->is_klassptr()->exact_klass();
+          if (klass->is_in_encoding_range()) {
+            new_in2 = ConNode::make(t->make_narrowklass());
+          }
         }
       }
       if (new_in2 != nullptr) {
@@ -3633,7 +3636,13 @@ void Compile::final_graph_reshaping_main_switch(Node* n, Final_Reshape_Counts& f
       } else if (t->isa_oopptr()) {
         n->subsume_by(ConNode::make(t->make_narrowoop()), this);
       } else if (t->isa_klassptr()) {
-        n->subsume_by(ConNode::make(t->make_narrowklass()), this);
+        ciKlass* klass = t->is_klassptr()->exact_klass();
+        if (klass->is_in_encoding_range()) {
+          n->subsume_by(ConNode::make(t->make_narrowklass()), this);
+        } else {
+          assert(false, "unencodable klass in ConP -> EncodeP");
+          C->record_failure("unencodable klass in ConP -> EncodeP");
+        }
       }
     }
     if (in1->outcnt() == 0) {

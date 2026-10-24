@@ -113,6 +113,7 @@ inline void ShenandoahHeapRegion::adjust_alloc_metadata(ShenandoahAllocRequest::
   switch (type) {
     case ShenandoahAllocRequest::_alloc_shared:
     case ShenandoahAllocRequest::_alloc_shared_gc:
+    case ShenandoahAllocRequest::_alloc_cds:
       // Counted implicitly by tlab/gclab allocs
       break;
     case ShenandoahAllocRequest::_alloc_tlab:
@@ -154,6 +155,23 @@ inline size_t ShenandoahHeapRegion::get_live_data_words() const {
 
 inline size_t ShenandoahHeapRegion::get_live_data_bytes() const {
   return get_live_data_words() * HeapWordSize;
+}
+
+inline size_t ShenandoahHeapRegion::get_mixed_candidate_live_data_bytes() const {
+  shenandoah_assert_heaplocked_or_safepoint();
+  assert(used() >= _mixed_candidate_garbage_words * HeapWordSize, "used must exceed garbage");
+  return used() - _mixed_candidate_garbage_words * HeapWordSize;
+}
+
+inline size_t ShenandoahHeapRegion::get_mixed_candidate_live_data_words() const {
+  shenandoah_assert_heaplocked_or_safepoint();
+  assert(used() >= _mixed_candidate_garbage_words * HeapWordSize, "used must exceed garbage");
+  return used() / HeapWordSize - _mixed_candidate_garbage_words;
+}
+
+inline void ShenandoahHeapRegion::capture_mixed_candidate_garbage() {
+  shenandoah_assert_heaplocked_or_safepoint();
+  _mixed_candidate_garbage_words = garbage() / HeapWordSize;
 }
 
 inline bool ShenandoahHeapRegion::has_live() const {
